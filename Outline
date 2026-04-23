@@ -1,0 +1,14 @@
+Create a linear system that can be represented as a coefficient matrix, that will allow this program to find the least squared regression to help determine the optimal purchase rate over a fixed period of time between each entry(want to increase profit margins)
+
+Using python, start with an initial dict to represent a system(Ax = b). Apply Least Squares equation(At * A x = At*b), reduce to RREF.
+
+Helper functions: 
+Gauss-Jordan Elimination 
+    elementary row operations 
+    Adding new rows to a matrix
+    recognizing a matrix in RREF form
+Multiplying by transpose
+
+
+
+ 
