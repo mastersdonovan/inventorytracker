@@ -34,7 +34,6 @@ class Inventory:
                 except ValueError:
                     print(f"  Invalid input — please enter a {'whole number' if cast is int else 'number'}.")
         self.add_week(values)
-
     def update_previous_week(self, week_index, week_data):
         self.optimization.update_previous_week(week_index, week_data)
 
