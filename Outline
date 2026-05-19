@@ -6,7 +6,6 @@ Helper functions:
 Gauss-Jordan Elimination 
     elementary row operations 
     Adding new rows to a matrix
-    recognizing a matrix in RREF form
 Multiplying by transpose
 
 

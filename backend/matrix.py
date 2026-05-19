@@ -1,30 +1,19 @@
 import numpy as np
-
-
 class Matrix:
     def __init__(self, data):
         self._m = np.array(data, dtype=float)
-        if self._m.ndim <= 2:
-            raise ValueError("Matrix data must be 2-dimensional")
-
-# Elementary row operations
-    def swap_rows(self, i, j):
-        """Swap row i and row j (R_i <-> R_j)."""
-        self._m[[i, j]] = self._m[[j, i]]
-        return self
-
-    def scale_row(self, i, scalar):
-        """Multiply row i by a non-zero scalar (R_i -> k * R_i)."""
-        if scalar == 0:
-            raise ValueError("Scalar must be non-zero")
-        self._m[i] *= scalar
-        return self
-
-    def add_scaled_row(self, target, source, scalar):
-        """Add scalar * source row to target row (R_target -> R_target + k * R_source)."""
-        self._m[target] += scalar * self._m[source]
-        return self
-
+        if self._m.ndim != 2:
+            raise ValueError("Matrix data must be at least 2-dimensions")
+    
+    def __matmul__(self, other):
+        if isinstance(other, np.ndarray):
+            return self._m @ other
+        elif isinstance(other, Matrix):
+            return self._m @ other._m
+        else:
+            raise ValueError("Unsupported type for matrix multiplication")
+        
+# Convert the matrix to Row Echelon Form (REF) and apply the same operations to vector b.
     def rref(self, b): 
         """Convert the matrix to Reduced Row Echelon Form (RREF) and apply the same operations to vector b."""
         m, n = self._m.shape
@@ -59,10 +48,10 @@ class Matrix:
     # Solve the least squares problem Ax = b by converting it to the normal equations A^T A x = A^T b
     def leastSquares(self, b):
         # find A^t * A 
-        AxAt = self @ (self._m.T)
+        AtA =  self._m.T @ self._m 
         # find A^t * b
-        Atb = self @ b
-        return self.rref(AxAt, Atb)
+        Atb = self._m.T @ b 
+        return Matrix(AtA).rref(Atb)
     
     @property 
     def shape(self):

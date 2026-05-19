@@ -1,14 +1,13 @@
-import json
-import os
+import store
 import matrix
 import numpy as np
 
-DATA_FILE = os.path.join(os.path.dirname(__file__), "optimization_data.json")
+DEFAULT_ID = "main"
 
 
 class Optimization:
-    def __init__(self, A, b, filepath=DATA_FILE):
-        self.filepath = filepath
+    def __init__(self, A, b, document_id=DEFAULT_ID):
+        self.document_id = document_id
         self.A = matrix.Matrix(A)
         self.b = np.array(b, dtype=float)
         self._save()
@@ -39,20 +38,13 @@ class Optimization:
         return self.A.leastSquares(self.b)
 
     @classmethod
-    def load(cls, filepath=DATA_FILE):
-        """Reconstruct an Optimization instance from a saved JSON file."""
-        with open(filepath) as f:
-            data = json.load(f)
+    def load(cls, document_id=DEFAULT_ID):
+        A, b = store.load(document_id)
         instance = object.__new__(cls)
-        instance.filepath = filepath
-        instance.A = matrix.Matrix(data["A"])
-        instance.b = np.array(data["b"], dtype=float)
+        instance.document_id = document_id
+        instance.A = matrix.Matrix(A)
+        instance.b = np.array(b, dtype=float)
         return instance
 
     def _save(self):
-        payload = {
-            "A": self.A.to_numpy().tolist(),
-            "b": self.b.tolist(),
-        }
-        with open(self.filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+        store.save(self.document_id, self.A.to_numpy().tolist(), self.b.tolist())
