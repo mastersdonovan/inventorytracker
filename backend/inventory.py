@@ -7,14 +7,14 @@ class Inventory:
         try:
             self.optimization = optimization.Optimization.load(self.document_id)
         except FileNotFoundError:
-            self.optimization = optimization.Optimization([[0, 0, 0]], [0], self.document_id)
+            self.optimization = optimization.Optimization([[0, 0, 0]], [0], document_id=self.document_id)
         self.product = {
             "cur_amt": self.optimization.A.to_numpy().tolist(),
             "amt-used": self.optimization.b.tolist(),
         }
 
-    def add_week(self, week_data):
-        self.optimization.add_week(week_data)
+    def add_week(self, week_data, margin):
+        self.optimization.add_week(week_data, margin)
 
     def add_input(self):
         """Prompt the user to enter this week's data interactively."""
@@ -34,6 +34,9 @@ class Inventory:
                 except ValueError:
                     print(f"  Invalid input — please enter a {'whole number' if cast is int else 'number'}.")
         self.add_week(values)
+    def add_variable(name, unit_cost):
+        self.matrix.add_column()
+        
     def update_previous_week(self, week_index, week_data):
         self.optimization.update_previous_week(week_index, week_data)
 

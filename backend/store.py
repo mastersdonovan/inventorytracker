@@ -18,11 +18,11 @@ def _get_collection():
     db = _client["inventorytracker"]
     return db["optimization"]
 
-def save(document_id, A, b):
+def save(document_id, A, b, variables=None):
     col = _get_collection()
     col.replace_one(
         {"_id": document_id},
-        {"_id": document_id, "A": A, "b": b},
+        {"_id": document_id, "A": A, "b": b, "variables": variables or []},
         upsert=True,
     )
 
@@ -31,4 +31,4 @@ def load(document_id):
     doc = col.find_one({"_id": document_id})
     if doc is None:
         raise FileNotFoundError(f"No document found with id '{document_id}'.")
-    return doc["A"], doc["b"]
+    return doc["A"], doc["b"], doc.get("variables", [])
