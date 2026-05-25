@@ -36,6 +36,21 @@ def add_variable():
     return jsonify(inv.optimization.variables), 201
 
 
+@app.route("/api/variables/<int:index>", methods=["PUT"])
+def update_variable(index):
+    variables = inv.optimization.variables
+    if index < 0 or index >= len(variables):
+        return jsonify({"error": "Index out of range"}), 404
+    data = request.get_json()
+    name = data.get("name", "").strip()
+    unit_cost = data.get("unit_cost")
+    if not name or unit_cost is None:
+        return jsonify({"error": "name and unit_cost are required"}), 400
+    variables[index] = {"name": name, "unit_cost": float(unit_cost)}
+    inv.optimization._save()
+    return jsonify(variables)
+
+
 @app.route("/api/variables/<int:index>", methods=["DELETE"])
 def remove_variable(index):
     variables = inv.optimization.variables
@@ -104,17 +119,33 @@ def get_results():
     variables = inv.optimization.variables
     if len(variables) == 0:
         return jsonify({"error": "No variables defined"}), 400
-    unit_costs = [v["unit_cost"] for v in variables]
-    x = inv.get_optimal_x().tolist()
-    results = [
-        {
+
+    A = inv.optimization.A.to_numpy()
+    b = inv.optimization.b
+
+    if len(b) < 2:
+        return jsonify({"error": "Need at least 2 weeks of data to calculate"}), 400
+
+    # Weight each week by its margin — profitable weeks pull the recommendation up.
+    # Falls back to a uniform average when no week has a positive margin yet.
+    weights = np.maximum(b, 0.0)
+    if weights.sum() == 0:
+        weights = np.ones(len(b))
+    weights /= weights.sum()
+
+    optimal_weekly = A.T @ weights  # margin-weighted average units per variable
+
+    results = []
+    for v, weekly in zip(variables, optimal_weekly):
+        results.append({
             "name": v["name"],
             "unit_cost": v["unit_cost"],
-            "optimal_purchase": round(max(0.0, coef), 2),
-        }
-        for v, coef in zip(variables, x)
-    ]
-    return jsonify({"variables": results, "coefficients": x})
+            "daily":   round(weekly / 7,        1),
+            "weekly":  round(weekly,             1),
+            "monthly": round(weekly * (52 / 12), 1),
+        })
+
+    return jsonify({"variables": results})
 
 
 if __name__ == "__main__":

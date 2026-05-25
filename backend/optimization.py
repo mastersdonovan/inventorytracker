@@ -128,7 +128,8 @@ class Optimization:
         A, b, variables = store.load(document_id)
         instance = object.__new__(cls)
         instance.document_id = document_id
-        instance.A = Matrix(A)
+        n_vars = len(variables) if variables else 0
+        instance.A = Matrix(A) if A else Matrix(np.zeros((0, max(n_vars, 1))))
         instance.b = np.array(b, dtype=float)
         instance.variables = variables or []
         return instance
