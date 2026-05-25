@@ -39,7 +39,7 @@ class Inventory:
 
     def remove_week(self, week_index):
         self.optimization.remove_week(week_index)
-
+    
     def get_optimal_x(self):
         return self.optimization.get_optimal_x()
 

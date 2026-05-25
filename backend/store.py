@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from pymongo.server_api import ServerApi
 
 load_dotenv()
 
@@ -12,7 +13,8 @@ def _get_collection():
     if not uri:
         raise EnvironmentError("MONGODB_URI is not set. Add it to a .env file or your environment.")
     if _client is None:
-        _client = MongoClient(uri)
+        _client = MongoClient(uri, server_api=ServerApi("1"))
+        _client.admin.command("ping")
     db = _client["inventorytracker"]
     return db["optimization"]
 
