@@ -2,9 +2,10 @@ import { useState } from 'react'
 import Variables from './components/Variables'
 import WeeklyEntry from './components/WeeklyEntry'
 import Results from './components/Results'
+import Insights from './components/Insights'
 import './App.css'
 
-const TABS = ['Variables', 'Weekly Entry', 'Results']
+const TABS = ['Variables', 'Weekly Entry', 'Results', 'Insights']
 
 export default function App() {
   const [tab, setTab] = useState('Variables')
@@ -29,6 +30,7 @@ export default function App() {
         {tab === 'Variables'    && <Variables />}
         {tab === 'Weekly Entry' && <WeeklyEntry />}
         {tab === 'Results'      && <Results />}
+        {tab === 'Insights'     && <Insights />}
       </main>
     </div>
   )
