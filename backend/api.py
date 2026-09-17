@@ -92,6 +92,9 @@ def add_week():
 
 @app.route("/api/weeks/<int:index>", methods=["PUT"])
 def update_week(index):
+    weeks_count = len(inv.optimization.b)
+    if index < 0 or index >= weeks_count:
+        return jsonify({"error": "Index out of range"}), 404
     data = request.get_json()
     units = data.get("units")
     margin = data.get("margin")
@@ -106,6 +109,9 @@ def update_week(index):
 
 @app.route("/api/weeks/<int:index>", methods=["DELETE"])
 def remove_week(index):
+    weeks_count = len(inv.optimization.b)
+    if index < 0 or index >= weeks_count:
+        return jsonify({"error": "Index out of range"}), 404
     inv.remove_week(index)
     return jsonify({"ok": True})
 
