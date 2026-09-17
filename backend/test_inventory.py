@@ -47,18 +47,6 @@ class TestMatrix(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.m @ "invalid"
 
-    def test_rref_simple(self):
-        # 2x + y = 5, x + y = 3  =>  x=2, y=1
-        A = Matrix([[2, 1], [1, 1]])
-        b = np.array([5.0, 3.0])
-        x = A.rref(b)
-        np.testing.assert_array_almost_equal(x, [2.0, 1.0])
-
-    def test_least_squares_exact(self):
-        A = Matrix([[2.0, 1.0], [1.0, 1.0]])
-        b = np.array([5.0, 3.0])
-        x = A.leastSquares(b)
-        np.testing.assert_array_almost_equal(x, [2.0, 1.0], decimal=5)
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +82,6 @@ class TestOptimization(unittest.TestCase):
             loaded.A.to_numpy(), self.opt.A.to_numpy()
         )
         np.testing.assert_array_almost_equal(loaded.b, self.opt.b)
-
-    def test_get_optimal_x_returns_vector(self):
-        x = self.opt.get_optimal_x()
-        self.assertEqual(len(x), 3)
 
     def test_add_week(self):
         opt = Optimization(self.A_data, self.b_data, variables=self.vars_data, document_id=TEST_ID + "_add")

@@ -129,20 +129,10 @@ def get_results():
     if len(variables) == 0:
         return jsonify({"error": "No variables defined"}), 400
 
-    A = inv.optimization.A.to_numpy()
-    b = inv.optimization.b
-
-    if len(b) < 2:
-        return jsonify({"error": "Need at least 2 weeks of data to calculate"}), 400
-
-    # Weight each week by its margin — profitable weeks pull the recommendation up.
-    # Falls back to a uniform average when no week has a positive margin yet.
-    weights = np.maximum(b, 0.0)
-    if weights.sum() == 0:
-        weights = np.ones(len(b))
-    weights /= weights.sum()
-
-    optimal_weekly = A.T @ weights  # margin-weighted average units per variable
+    try:
+        optimal_weekly = inv.optimization.get_weighted_average()
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     results = []
     for v, weekly in zip(variables, optimal_weekly):
