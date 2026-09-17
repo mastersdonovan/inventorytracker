@@ -141,3 +141,9 @@ class Optimization:
             self.b.tolist(),
             self.variables,
         )
+    def clear(self):
+        """ Wipe all recorded weeks. Called when no variables remain, since a weeks matrix can't meaningfully exist with zero columns. """
+        self.A = Matrix(np.zeros((0,0)))
+        self.b = np.zeros(0)
+        self._save()
+

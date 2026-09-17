@@ -58,7 +58,10 @@ def remove_variable(index):
         return jsonify({"error": "Index out of range"}), 404
     inv.optimization.variables.pop(index)
     inv.optimization.A.remove_column(index)
-    inv.optimization._save()
+    if len(variables) == 0:
+        inv.optimization.clear()
+    else:
+        inv.optimization._save()
     return jsonify(inv.optimization.variables)
 
 
