@@ -2,71 +2,24 @@ import store
 import numpy as np
 
 DEFAULT_ID = "main"
-class Opti
-    def __init__(self, data):
-        self._m = np.array(data, dtype=float)
-        if self._m.ndim != 2:
-            raise ValueError("Matrix data must be 2-dimensional")
-
-    def __matmul__(self, other):
-        if isinstance(other, np.ndarray):
-            return self._m @ other
-        elif isinstance(other, Matrix):
-            return self._m @ other._m
-        else:
-            raise ValueError("Unsupported type for matrix multiplication")
-
-    def add_column(self, values=None):
-        """Append a column to the matrix. Defaults to zeros if no values provided."""
-        m = self._m.shape[0]
-        col = np.zeros((m, 1)) if values is None else np.array(values, dtype=float).reshape(m, 1)
-        self._m = np.hstack((self._m, col))
-        return self
-
-    def remove_column(self, index):
-        """Remove the column at the given index."""
-        self._m = np.delete(self._m, index, axis=1)
-        return self
-    
-    # Calculate weighted average of the units per variable across all recorded weeks, weighted by margin.
-    def get_weighted_average(self):
-        """Margin weighted average units per variable across all recorded weeks. 
-           Weeks with higher margin pull the result up; falls back to a uniform averge if no week has positive margin yet."""
-        if len(self.b < 2):
-            raise ValueError("Need at least 2 weeks of data to calculate weighted average.")
-        A = self.A.to_numpy()
-        weights = np.maximum(self.b, 0.0)
-        if weights.sum() == 0:
-            weights = np.ones(len(self.b))
-        weights /= weights.sum()
-        return A.T @ weights
-
-
-    @property
-    def shape(self):
-        return self._m.shape
-
-    def to_numpy(self):
-        return self._m.copy()
-
-    def __repr__(self):
-        return f"Matrix(\n{self._m}\n)"
-
 
 class Optimization:
     def __init__(self, A, b, variables=None, document_id=DEFAULT_ID):
         self.document_id = document_id
-        self.A = Matrix(A)
+        self.A = np.array(A, dtype=float)
+        if self.A.ndim != 2:
+            raise ValueError("A must be 2-dimensional")
         self.b = np.array(b, dtype=float)
         self.variables = variables or []
         self._save()
 
+# weeks
     def add_week(self, week_data, margin):
         if len(week_data) != len(self.variables):
             raise ValueError(
                 f"Expected {len(self.variables)} values, got {len(week_data)}."
             )
-        self.A = Matrix(np.vstack((self.A.to_numpy(), week_data)))
+        self.A = np.vstack((self.A, week_data))
         self.b = np.hstack((self.b, margin))
         self._save()
 
@@ -75,29 +28,70 @@ class Optimization:
             raise ValueError(
                 f"Expected {len(self.variables)} values, got {len(week_data)}."
             )
-        self.A = Matrix(np.vstack((
-            self.A.to_numpy()[:week_index],
-            week_data,
-            self.A.to_numpy()[week_index + 1:]
-        )))
-        self.b = np.hstack((self.b[:week_index], margin, self.b[week_index + 1:]))
+        self.A[week_index] = week_data
+        self.b[week_index] = margin
         self._save()
 
     def remove_week(self, week_index):
-        self.A = Matrix(np.vstack((
-            self.A.to_numpy()[:week_index],
-            self.A.to_numpy()[week_index + 1:]
-        )))
-        self.b = np.hstack((self.b[:week_index], self.b[week_index + 1:]))
+        self.A = np.delete(self.A, week_index, axis=0)
+        self.b = np.delete(self.b, week_index)
         self._save()
 
+# variables
+    def add_variable(self, name, unit_cost):
+        if len(self.variables) == 0:
+            self.A = np.zeros((0, 0))
+            self.b = np.zeros(0)
+        self.variables.append({"name": name, "unit_cost": unit_cost})
+        self.A = np.hstack((self.A, np.zeros((self.A.shape[0], 1))))
+        self._save()
+        return self.variables
+
+    def update_variable(self, index, name, unit_cost):
+        if index < 0 or index >= len(self.variables):
+            raise IndexError("Index out of range")
+        self.variables[index] = {"name": name, "unit_cost": unit_cost}
+        self._save()
+        return self.variables
+
+    def remove_variable(self, index):
+        if index < 0 or index >= len(self.variables):
+            raise IndexError("Index out of range")
+        self.variables.pop(index)
+        self.A = np.delete(self.A, index, axis=1)
+        if len(self.variables) == 0:
+            self.clear()
+        else:
+            self._save()
+        return self.variables
+
+    def clear(self):
+        """Wipe all recorded weeks. Called when no variables remain, since a
+        weeks matrix can't meaningfully exist with zero columns."""
+        self.A = np.zeros((0, 0))
+        self.b = np.zeros(0)
+        self._save()
+
+# calculation
+    def get_weighted_average(self):
+        """Margin-weighted average units per variable across all weeks.
+        Falls back to a uniform average if no week has a positive margin."""
+        if len(self.b) < 2:
+            raise ValueError("Need at least 2 weeks of data to calculate")
+        weights = np.maximum(self.b, 0.0)
+        if weights.sum() == 0:
+            weights = np.ones(len(self.b))
+        weights = weights / weights.sum()
+        return self.A.T @ weights
+
+# persistence
     @classmethod
     def load(cls, document_id=DEFAULT_ID):
         A, b, variables = store.load(document_id)
         instance = object.__new__(cls)
         instance.document_id = document_id
         n_vars = len(variables) if variables else 0
-        instance.A = Matrix(A) if A else Matrix(np.zeros((0, max(n_vars, 1))))
+        instance.A = np.array(A, dtype=float) if A else np.zeros((0, max(n_vars, 1)))
         instance.b = np.array(b, dtype=float)
         instance.variables = variables or []
         return instance
@@ -105,13 +99,7 @@ class Optimization:
     def _save(self):
         store.save(
             self.document_id,
-            self.A.to_numpy().tolist(),
+            self.A.tolist(),
             self.b.tolist(),
             self.variables,
         )
-    def clear(self):
-        """ Wipe all recorded weeks. Called when no variables remain, since a weeks matrix can't meaningfully exist with zero columns. """
-        self.A = Matrix(np.zeros((0,0)))
-        self.b = np.zeros(0)
-        self._save()
-
