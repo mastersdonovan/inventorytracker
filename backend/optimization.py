@@ -2,9 +2,7 @@ import store
 import numpy as np
 
 DEFAULT_ID = "main"
-
-
-class Matrix:
+class Opti
     def __init__(self, data):
         self._m = np.array(data, dtype=float)
         if self._m.ndim != 2:
