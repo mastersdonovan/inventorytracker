@@ -1,13 +1,10 @@
 import numpy as np
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from inventory import Inventory
-from optimization import Matrix
-
+from optimization import Optimization
+opt = Optimization.load_or_create()
 app = Flask(__name__)
 CORS(app)
-
-inv = Inventory()
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +25,7 @@ def add_variable():
         return jsonify({"error": "name and unit_cost are required"}), 400
     if len(inv.optimization.variables) == 0:
         # Clear the placeholder row so real week data starts fresh
-        inv.optimization.A = Matrix(np.zeros((0, 0)))
+        inv.optimization.A = np.zeros((0, 0))
         inv.optimization.b = np.zeros(0)
     inv.optimization.variables.append({"name": name, "unit_cost": float(unit_cost)})
     inv.optimization.A.add_column()
