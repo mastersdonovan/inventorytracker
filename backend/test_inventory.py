@@ -1,52 +1,13 @@
 import unittest
 import numpy as np
 import store
-from optimization import Matrix
 from optimization import Optimization
-from inventory import Inventory
 
 TEST_ID = "_unit_test"
 
 
 def _col():
     return store._get_collection()
-
-
-# ---------------------------------------------------------------------------
-# Matrix  (no MongoDB needed)
-# ---------------------------------------------------------------------------
-
-class TestMatrix(unittest.TestCase):
-
-    def setUp(self):
-        self.m = Matrix([[1, 2, 3],
-                         [4, 5, 6],
-                         [7, 8, 9]])
-
-    def test_rejects_1d(self):
-        with self.assertRaises(ValueError):
-            Matrix([1, 2, 3])
-
-    def test_rejects_3d(self):
-        with self.assertRaises(ValueError):
-            Matrix([[[1, 2], [3, 4]]])
-
-    def test_shape(self):
-        self.assertEqual(self.m.shape, (3, 3))
-
-    def test_matmul_ndarray(self):
-        m = Matrix([[1, 0], [0, 1]])
-        v = np.array([3.0, 4.0])
-        np.testing.assert_array_equal(m @ v, v)
-
-    def test_matmul_matrix(self):
-        m = Matrix([[1, 0], [0, 1]])
-        np.testing.assert_array_equal(m @ m, m.to_numpy())
-
-    def test_matmul_invalid_raises(self):
-        with self.assertRaises(ValueError):
-            self.m @ "invalid"
-
 
 
 # ---------------------------------------------------------------------------
@@ -63,107 +24,147 @@ class TestOptimization(unittest.TestCase):
         {"name": "current_stock",   "unit_cost": 0.0},
     ]
 
-    @classmethod
-    def setUpClass(cls):
-        _col().delete_one({"_id": TEST_ID})
-        cls.opt = Optimization(cls.A_data, cls.b_data, variables=cls.vars_data, document_id=TEST_ID)
+    def _make(self, suffix=""):
+        """Create a fresh document for one test and delete it afterwards."""
+        doc_id = TEST_ID + suffix
+        _col().delete_one({"_id": doc_id})
+        self.addCleanup(_col().delete_one, {"_id": doc_id})
+        return Optimization(
+            self.A_data,
+            self.b_data,
+            variables=[dict(v) for v in self.vars_data],
+            document_id=doc_id,
+        )
 
-    @classmethod
-    def tearDownClass(cls):
-        _col().delete_one({"_id": TEST_ID})
+    # --- construction / persistence ---------------------------------------
 
     def test_initial_shape(self):
-        self.assertEqual(self.opt.A.shape, (4, 3))
-        self.assertEqual(len(self.opt.b), 4)
+        opt = self._make()
+        self.assertEqual(opt.A.shape, (4, 3))
+        self.assertEqual(len(opt.b), 4)
+
+    def test_rejects_1d_A(self):
+        with self.assertRaises(ValueError):
+            Optimization([1, 2, 3], [1], document_id=TEST_ID + "_bad")
 
     def test_save_and_load_roundtrip(self):
+        opt = self._make()
         loaded = Optimization.load(TEST_ID)
-        np.testing.assert_array_almost_equal(
-            loaded.A.to_numpy(), self.opt.A.to_numpy()
-        )
-        np.testing.assert_array_almost_equal(loaded.b, self.opt.b)
+        np.testing.assert_array_almost_equal(loaded.A, opt.A)
+        np.testing.assert_array_almost_equal(loaded.b, opt.b)
+        self.assertEqual(loaded.variables, opt.variables)
 
-    def test_add_week(self):
-        opt = Optimization(self.A_data, self.b_data, variables=self.vars_data, document_id=TEST_ID + "_add")
-        opt.add_week([105, 2.1, 12], 100)
-        self.assertEqual(opt.A.shape, (5, 3))
-        reloaded = Optimization.load(TEST_ID + "_add")
-        self.assertEqual(reloaded.A.shape, (5, 3))
-        _col().delete_one({"_id": TEST_ID + "_add"})
-
-    def test_remove_week(self):
-        opt = Optimization(self.A_data, self.b_data, variables=self.vars_data, document_id=TEST_ID + "_rm")
-        opt.remove_week(0)
-        self.assertEqual(opt.A.shape, (3, 3))
-        _col().delete_one({"_id": TEST_ID + "_rm"})
-
-    def test_update_previous_week(self):
-        opt = Optimization(self.A_data, self.b_data, variables=self.vars_data, document_id=TEST_ID + "_upd")
-        opt.update_previous_week(0, [99, 2.05, 25], 90)
-        np.testing.assert_array_almost_equal(opt.A.to_numpy()[0], [99, 2.05, 25])
-        self.assertAlmostEqual(opt.b[0], 90)
-        _col().delete_one({"_id": TEST_ID + "_upd"})
-
-
-# ---------------------------------------------------------------------------
-# Inventory (MongoDB)
-# ---------------------------------------------------------------------------
-
-class TestInventory(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        _col().delete_one({"_id": TEST_ID})
-        vars_data = [
-            {"name": "units_purchased", "unit_cost": 2.0},
-            {"name": "unit_cost",       "unit_cost": 1.0},
-            {"name": "current_stock",   "unit_cost": 0.0},
-        ]
-        Optimization(
-            [[100, 2.0, 20], [120, 1.8, 15], [90, 2.2, 30], [110, 2.0, 10]],
-            [95, 110, 80, 105],
-            variables=vars_data,
-            document_id=TEST_ID,
-        )
-        cls.inv = Inventory(document_id=TEST_ID)
-
-    @classmethod
-    def tearDownClass(cls):
-        _col().delete_one({"_id": TEST_ID})
-
-    def test_loads_existing_data(self):
-        self.assertEqual(self.inv.optimization.A.shape, (4, 3))
-
-    def test_fresh_init_when_no_document(self):
+    def test_load_or_create_when_no_document(self):
         fresh_id = TEST_ID + "_fresh"
         _col().delete_one({"_id": fresh_id})
-        inv = Inventory(document_id=fresh_id)
-        self.assertEqual(inv.optimization.A.shape, (1, 3))
-        _col().delete_one({"_id": fresh_id})
+        self.addCleanup(_col().delete_one, {"_id": fresh_id})
+        opt = Optimization.load_or_create(fresh_id)
+        self.assertEqual(opt.A.shape, (0, 0))
+        self.assertEqual(opt.get_variables(), [])
+
+    # --- weeks ------------------------------------------------------------
 
     def test_add_week(self):
-        inv = Inventory(document_id=TEST_ID)
-        before = inv.optimization.A.shape[0]
-        inv.add_week([105, 2.1, 12], 100)
-        self.assertEqual(inv.optimization.A.shape[0], before + 1)
+        opt = self._make("_add")
+        opt.add_week([105, 2.1, 12], 100)
+        self.assertEqual(opt.A.shape, (5, 3))
+        self.assertEqual(Optimization.load(TEST_ID + "_add").A.shape, (5, 3))
 
-    def test_optimal_purchase_low_stock(self):
-        p = self.inv.optimal_purchase(unit_cost=2.0, current_stock=5)
-        self.assertGreater(p, 0)
+    def test_add_week_wrong_length(self):
+        opt = self._make("_len")
+        with self.assertRaises(ValueError):
+            opt.add_week([1, 2], 50)
 
-    def test_optimal_purchase_high_stock(self):
-        p = self.inv.optimal_purchase(unit_cost=2.0, current_stock=200)
-        self.assertEqual(p, 0.0)
+    def test_update_week(self):
+        opt = self._make("_upd")
+        opt.update_week(0, [99, 2.05, 25], 90)
+        np.testing.assert_array_almost_equal(opt.A[0], [99, 2.05, 25])
+        self.assertAlmostEqual(opt.b[0], 90)
 
-    def test_get_margin_keys(self):
-        result = self.inv.get_margin(unit_cost=2.0, current_stock=5, selling_price=5.0)
-        self.assertIn("optimal_purchase", result)
-        self.assertIn("units_remaining", result)
-        self.assertIn("dollar_profit", result)
+    def test_update_week_out_of_range(self):
+        opt = self._make("_upd_oob")
+        with self.assertRaises(IndexError):
+            opt.update_week(99, [99, 2.05, 25], 90)
 
-    def test_get_margin_profit_positive(self):
-        result = self.inv.get_margin(unit_cost=2.0, current_stock=5, selling_price=5.0)
-        self.assertGreater(result["dollar_profit"], 0)
+    def test_remove_week(self):
+        opt = self._make("_rm")
+        opt.remove_week(0)
+        self.assertEqual(opt.A.shape, (3, 3))
+        self.assertEqual(len(opt.b), 3)
+
+    def test_remove_week_out_of_range(self):
+        opt = self._make("_rm_oob")
+        with self.assertRaises(IndexError):
+            opt.remove_week(-1)
+
+    def test_get_weeks(self):
+        opt = self._make("_weeks")
+        weeks = opt.get_weeks()
+        self.assertEqual(len(weeks), 4)
+        self.assertEqual(weeks[0]["units"], [100, 2.0, 20])
+        self.assertEqual(weeks[0]["margin"], 95)
+
+    # --- variables --------------------------------------------------------
+
+    def test_add_variable_adds_zero_column(self):
+        opt = self._make("_addvar")
+        opt.add_variable("new", 1.5)
+        self.assertEqual(opt.A.shape, (4, 4))
+        np.testing.assert_array_equal(opt.A[:, 3], np.zeros(4))
+
+    def test_update_variable_out_of_range(self):
+        opt = self._make("_updvar_oob")
+        with self.assertRaises(IndexError):
+            opt.update_variable(99, "x", 1.0)
+
+    def test_remove_variable(self):
+        opt = self._make("_rmvar")
+        opt.remove_variable(0)
+        self.assertEqual(opt.A.shape, (4, 2))
+        self.assertEqual(len(opt.get_variables()), 2)
+
+    def test_remove_last_variable_clears_weeks(self):
+        opt = self._make("_clear")
+        for _ in range(3):
+            opt.remove_variable(0)
+        self.assertEqual(opt.A.shape, (0, 0))
+        self.assertEqual(len(opt.b), 0)
+
+    def test_add_variable_and_week_after_clear(self):
+        opt = self._make("_reuse")
+        for _ in range(3):
+            opt.remove_variable(0)
+        opt.add_variable("a", 1.0)
+        opt.add_week([5], 10)
+        self.assertEqual(opt.A.shape, (1, 1))
+
+    def test_get_variables_returns_copies(self):
+        opt = self._make("_copies")
+        opt.get_variables()[0]["name"] = "changed"
+        self.assertEqual(opt.variables[0]["name"], "units_purchased")
+
+    # --- calculation ------------------------------------------------------
+
+    def test_weighted_average_length(self):
+        opt = self._make("_avg")
+        self.assertEqual(len(opt.get_weighted_average()), 3)
+
+    def test_weighted_average_favors_high_margin_weeks(self):
+        opt = Optimization(
+            [[10], [20]], [1, 3],
+            variables=[{"name": "x", "unit_cost": 1.0}],
+            document_id=TEST_ID + "_wavg",
+        )
+        self.addCleanup(_col().delete_one, {"_id": TEST_ID + "_wavg"})
+        # weights 0.25 / 0.75  ->  10*0.25 + 20*0.75 = 17.5
+        np.testing.assert_array_almost_equal(opt.get_weighted_average(), [17.5])
+
+    def test_weighted_average_needs_two_weeks(self):
+        opt = self._make("_avg_few")
+        for _ in range(3):
+            opt.remove_week(0)
+        with self.assertRaises(ValueError):
+            opt.get_weighted_average()
 
 
 if __name__ == "__main__":

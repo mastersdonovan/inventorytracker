@@ -1,10 +1,39 @@
-import numpy as np
+import os
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from optimization import Optimization
-opt = Optimization.load_or_create()
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")])
+
+opt = Optimization.load_or_create()
+
+
+def _parse_variable(data):
+    """Return (name, unit_cost) from a request body, or None if invalid."""
+    data = data or {}
+    name = str(data.get("name", "")).strip()
+    unit_cost = data.get("unit_cost")
+    if not name or unit_cost is None:
+        return None
+    try:
+        return name, float(unit_cost)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_week(data):
+    """Return (units, margin) from a request body, or None if invalid."""
+    data = data or {}
+    units = data.get("units")
+    margin = data.get("margin")
+    if units is None or margin is None:
+        return None
+    try:
+        return units, float(margin)
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -13,53 +42,34 @@ CORS(app)
 
 @app.route("/api/variables", methods=["GET"])
 def get_variables():
-    return jsonify(inv.optimization.variables)
+    return jsonify(opt.get_variables())
 
 
 @app.route("/api/variables", methods=["POST"])
 def add_variable():
-    data = request.get_json()
-    name = data.get("name", "").strip()
-    unit_cost = data.get("unit_cost")
-    if not name or unit_cost is None:
-        return jsonify({"error": "name and unit_cost are required"}), 400
-    if len(inv.optimization.variables) == 0:
-        # Clear the placeholder row so real week data starts fresh
-        inv.optimization.A = np.zeros((0, 0))
-        inv.optimization.b = np.zeros(0)
-    inv.optimization.variables.append({"name": name, "unit_cost": float(unit_cost)})
-    inv.optimization.A.add_column()
-    inv.optimization._save()
-    return jsonify(inv.optimization.variables), 201
+    parsed = _parse_variable(request.get_json(silent=True))
+    if parsed is None:
+        return jsonify({"error": "name and a numeric unit_cost are required"}), 400
+    return jsonify(opt.add_variable(*parsed)), 201
 
 
 @app.route("/api/variables/<int:index>", methods=["PUT"])
 def update_variable(index):
-    variables = inv.optimization.variables
-    if index < 0 or index >= len(variables):
+    parsed = _parse_variable(request.get_json(silent=True))
+    if parsed is None:
+        return jsonify({"error": "name and a numeric unit_cost are required"}), 400
+    try:
+        return jsonify(opt.update_variable(index, *parsed))
+    except IndexError:
         return jsonify({"error": "Index out of range"}), 404
-    data = request.get_json()
-    name = data.get("name", "").strip()
-    unit_cost = data.get("unit_cost")
-    if not name or unit_cost is None:
-        return jsonify({"error": "name and unit_cost are required"}), 400
-    variables[index] = {"name": name, "unit_cost": float(unit_cost)}
-    inv.optimization._save()
-    return jsonify(variables)
 
 
 @app.route("/api/variables/<int:index>", methods=["DELETE"])
 def remove_variable(index):
-    variables = inv.optimization.variables
-    if index < 0 or index >= len(variables):
+    try:
+        return jsonify(opt.remove_variable(index))
+    except IndexError:
         return jsonify({"error": "Index out of range"}), 404
-    inv.optimization.variables.pop(index)
-    inv.optimization.A.remove_column(index)
-    if len(variables) == 0:
-        inv.optimization.clear()
-    else:
-        inv.optimization._save()
-    return jsonify(inv.optimization.variables)
 
 
 # ---------------------------------------------------------------------------
@@ -68,23 +78,16 @@ def remove_variable(index):
 
 @app.route("/api/weeks", methods=["GET"])
 def get_weeks():
-    if not inv.optimization.variables:
-        return jsonify([])
-    A = inv.optimization.A.to_numpy().tolist()
-    b = inv.optimization.b.tolist()
-    weeks = [{"units": row, "margin": margin} for row, margin in zip(A, b)]
-    return jsonify(weeks)
+    return jsonify(opt.get_weeks())
 
 
 @app.route("/api/weeks", methods=["POST"])
 def add_week():
-    data = request.get_json()
-    units = data.get("units")
-    margin = data.get("margin")
-    if units is None or margin is None:
-        return jsonify({"error": "units and margin are required"}), 400
+    parsed = _parse_week(request.get_json(silent=True))
+    if parsed is None:
+        return jsonify({"error": "units and a numeric margin are required"}), 400
     try:
-        inv.add_week(units, float(margin))
+        opt.add_week(*parsed)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"ok": True}), 201
@@ -92,16 +95,13 @@ def add_week():
 
 @app.route("/api/weeks/<int:index>", methods=["PUT"])
 def update_week(index):
-    weeks_count = len(inv.optimization.b)
-    if index < 0 or index >= weeks_count:
-        return jsonify({"error": "Index out of range"}), 404
-    data = request.get_json()
-    units = data.get("units")
-    margin = data.get("margin")
-    if units is None or margin is None:
-        return jsonify({"error": "units and margin are required"}), 400
+    parsed = _parse_week(request.get_json(silent=True))
+    if parsed is None:
+        return jsonify({"error": "units and a numeric margin are required"}), 400
     try:
-        inv.optimization.update_previous_week(index, units, float(margin))
+        opt.update_week(index, *parsed)
+    except IndexError:
+        return jsonify({"error": "Index out of range"}), 404
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"ok": True})
@@ -109,10 +109,10 @@ def update_week(index):
 
 @app.route("/api/weeks/<int:index>", methods=["DELETE"])
 def remove_week(index):
-    weeks_count = len(inv.optimization.b)
-    if index < 0 or index >= weeks_count:
+    try:
+        opt.remove_week(index)
+    except IndexError:
         return jsonify({"error": "Index out of range"}), 404
-    inv.remove_week(index)
     return jsonify({"ok": True})
 
 
@@ -122,12 +122,12 @@ def remove_week(index):
 
 @app.route("/api/results", methods=["GET"])
 def get_results():
-    variables = inv.optimization.variables
+    variables = opt.get_variables()
     if len(variables) == 0:
         return jsonify({"error": "No variables defined"}), 400
 
     try:
-        optimal_weekly = inv.optimization.get_weighted_average()
+        optimal_weekly = opt.get_weighted_average()
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -145,4 +145,5 @@ def get_results():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug_mode, port=5000)
